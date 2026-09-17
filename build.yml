@@ -22,39 +22,43 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Pre-accept Android SDK licenses
+        run: |
+          ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          mkdir -p "$ANDROID_HOME/licenses"
+          printf '8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n' > "$ANDROID_HOME/licenses/android-sdk-license"
+          printf '84831b9409646a918e30573bab4c9c91346d8abd\n504667f4c0de7af1a06de9f4b1727b84351f2910\n' > "$ANDROID_HOME/licenses/android-sdk-preview-license"
+          echo '601085b94cd77f0b54ff86406957099ebe79c4d6' > "$ANDROID_HOME/licenses/android-googletv-license"
+          echo '33b6a2b64607f11b759f320ef9dff4ae5c47d97a' > "$ANDROID_HOME/licenses/google-gdk-license"
+          echo 'd975f751698a77b662f1254ddbeed3901e976f5a' > "$ANDROID_HOME/licenses/intel-android-extra-license"
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
 
-      # The repository intentionally does NOT commit the binary gradle-wrapper.jar
-      # (this project was generated without network/build access — see README).
-      # This step installs a real Gradle distribution and uses it to (re)generate a
-      # working gradlew + gradle-wrapper.jar matching gradle/wrapper/gradle-wrapper.properties,
-      # then every subsequent step calls ./gradlew exactly as a normal local build would.
+      - name: Install SDK platform & build-tools for compileSdk 34
+        run: |
+          ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platforms;android-34" "build-tools;34.0.0" || true
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: 8.7
 
       - name: Generate Gradle wrapper
-        run: gradle wrapper --gradle-version 8.7
+        run: |
+          mkdir -p /tmp/gradle-wrapper-gen
+          cd /tmp/gradle-wrapper-gen
+          touch settings.gradle
+          gradle wrapper --gradle-version 8.7
+          cp -r gradle "$GITHUB_WORKSPACE/"
+          cp gradlew gradlew.bat "$GITHUB_WORKSPACE/"
 
       - name: Grant execute permission to gradlew
         run: chmod +x ./gradlew
-
-      - name: Provide placeholder local.properties (MAPS_API_KEY)
-        run: |
-          echo "sdk.dir=${ANDROID_HOME}" > local.properties
-          echo "MAPS_API_KEY=${{ secrets.MAPS_API_KEY || 'YOUR_API_KEY_HERE' }}" >> local.properties
-
-      - name: Ensure debug keystore exists (used as temporary release signing key)
-        run: |
-          mkdir -p ~/.android
-          if [ ! -f ~/.android/debug.keystore ]; then
-            keytool -genkey -v -keystore ~/.android/debug.keystore \
-              -storepass android -alias androiddebugkey -keypass android \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US"
-          fi
 
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest --stacktrace
@@ -67,25 +71,23 @@ jobs:
 
       - name: Verify release APK exists
         run: |
-          APK_PATH="app/build/outputs/apk/release/app-release.apk"
-          if [ ! -f "$APK_PATH" ]; then
-            echo "ERROR: expected APK not found at $APK_PATH"
+          find app/build/outputs/apk/release -name "*.apk" -exec ls -la {} \;
+          if [ -z "$(find app/build/outputs/apk/release -name '*.apk')" ]; then
+            echo "ERROR: no release APK was produced"
             find app/build/outputs -name "*.apk"
             exit 1
           fi
-          echo "APK found:"
-          ls -la "$APK_PATH"
 
       - name: Upload release APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: ELBRO-GEO-SCAN-release-apk
-          path: app/build/outputs/apk/release/app-release.apk
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: ELBRO-GEO-SCAN-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
