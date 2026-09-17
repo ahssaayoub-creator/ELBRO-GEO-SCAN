@@ -1,0 +1,9 @@
+## Copy this file to "local.properties" (same folder) before opening in Android Studio.
+## Android Studio normally generates local.properties automatically the first time
+## you open the project and point it at your SDK — you usually do NOT need to edit
+## this manually.
+sdk.dir=/path/to/your/Android/sdk
+
+## If you enable the Google Maps screen (see README "Configuration Maps"),
+## put your Maps API key in local.properties too, NEVER in source control:
+MAPS_API_KEY=YOUR_API_KEY_HERE
